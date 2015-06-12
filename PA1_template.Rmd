@@ -1,25 +1,240 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+author: "Ahmed Tadde"
+date: "June 9, 2015"
+output: html_document
+keep_md: true
 ---
+
 
 
 ## Loading and preprocessing the data
 
+```{r,tidy = T}
+library(data.table);library(dplyr);library(lattice)
+```
+
+```{r,tidy = T}
+
+Data <- fread("activity.csv", 
+              sep = "," , 
+              na.strings = "NA", 
+              header = T 
+              
+             )
+
+Data ; str(Data); summary(Data)
+
+```
+
+The data is a tidy data. The one (apparent) issue is the number of NA values for the step variable (This will be dealt with later on). 
+
+For convenience we will coerce the "date" and "interval" identifier variables to factor variables  ( this can be undone if need be later on). In addition, we can rename the "interval" variable as "interval.ID".
+
+```{r,tidy=T}
+
+Data$date <- as.factor(Data$date)
+Data$interval <- as.factor(Data$interval)
+Data <- Data%>%rename(interval.ID= interval)
+```
 
 
 ## What is mean total number of steps taken per day?
 
+We can get the total number of steps taken per day like this:
 
+```{r,tidy=T}
+steps.per.day <- Data[, 
+                      .(sum.of.steps = sum(steps, na.rm = T)),
+                      by = .(Date=date)
+                     ]
+steps.per.day
+```
+
+Now, let's see the distribution of the total number of steps taken each day:
+
+```{r,tidy=T}
+
+steps.per.day[, 
+              hist(sum.of.steps, 
+                   breaks =10,
+                   main ="Distribution of the total number of steps taken each day",
+                   xlab = "Total Number of Steps Taken per Day",
+                   ylab =" Steps"
+                   )
+             ]
+```
+
+And, finally, we get the mean and median of the total number of steps taken per day:
+
+```{r,tidy=T}
+ 
+report <- steps.per.day[, .(Mean = mean(sum.of.steps), Median = median(sum.of.steps))]
+report
+
+```
 
 ## What is the average daily activity pattern?
 
+First, (1) we can find the average number of steps taken for each 5-minute interval accross all the days. Then, (2) we plot the time series relating each 5-minute interval to its average number of steps taken (accross all days):
+
+```{r,tidy=T}
+
+xy.table <- Data[,
+                  .(number.of.steps = mean(steps, na.rm =T)) , 
+                  by = .(interval.ID = interval.ID)
+                ]
+
+xy.table
+
+
+with(xy.table, 
+     
+     plot(
+          interval.ID,
+          number.of.steps,
+          xlab ="Interval ID",
+          ylab ="Number of Steps Taken", 
+          main ="Daily Activity Pattern",
+          axes=FALSE
+          )
+     )
+
+
+axis(side=2, at=seq(0, 225, by=50))
+with(xy.table, lines(interval.ID, number.of.steps, type = "l", col = "red"))
+
+```
+
+*Note: The x-axis (and its 288 labels) is purposely made invisible for better viewing.*
+
+Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+
+```{r,tidy=T}
+Data$interval.ID[with(xy.table,  which.max(number.of.steps))]
+```
+
+So, the interval with ID:835 is the answer. Specifically this corresponds to the elapsed time between 8:30 am and 8:35 am.
 
 
 ## Imputing missing values
 
+Calculating the total number of missing values in the dataset (i.e. the total number of rows with NAs):
+
+```{r,tidy=T}
+nrow(Data%>%filter(is.na(steps)))
+```
+
+
+A method of replacing the NA values is to, first, (1) find the average number of steps taken for each 5-minute interval accross all days. Then, (2) we calculate the median of those averages and use it to replace the NA values. 
+
+ 
+```{r,tidy=T}
+#(1) is already done and the results are saved in the xy.table object made in the previous section
+
+#(2)
+replacement.value <- xy.table%>%summarise(Median = median(number.of.steps))
+replacement.value
+```
+
+Now, let's see what we get:
+
+```{r,tidy=T}
+new.Data <- Data
+new.Data$steps[with(new.Data, is.na(steps))] = trunc(replacement.value$Median)
+
+steps.per.day <- new.Data%>%group_by(date)%>%summarise(sum.of.steps = sum(steps))
+steps.per.day
+```
+
+the distribution of the total number of steps taken each day:
+
+```{r,tidy=T}
+
+steps.per.day[, 
+              hist(sum.of.steps, 
+                   breaks =10,
+                   main ="Distribution of the total number of steps taken each day",
+                   xlab = "Total Number of Steps Taken per Day",
+                   ylab =" Steps"
+                   )
+             ]
+```
+
+And, finally, we get the mean and median of the total number of steps taken per day:
+
+```{r,tidy=T}
+ 
+report <- steps.per.day[, .(Mean = mean(sum.of.steps), Median = median(sum.of.steps))]
+report
+
+```
+
+We do get a diferent value for the Mean after imputing the NA values. But this new value is not greatly different (in maginitude) from the Mean calculated without imputation. The Median stay the same. These two different data sets should not, in principle, give widely different results when used to perform the same analysis. 
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+
+```{r,tidy=T}
+#Creating the new factor variable is.Weekday
+Data <- Data%>%mutate(
+                      Days= as.factor(weekdays(as.Date(date, "%Y-%m-%d"))),
+                      is.Weekday = !(as.character(Days) %in% c("Saturday","Sunday"))
+                      )
+
+# a dummy vector to contain either weekday or weekend.
+dummy <- rep("weekday", nrow(Data));
+dummy[Data$is.Weekday == FALSE] = "weekend"
+# Converting is.Weekday's TRUE/FALSE values to weekday/weekend values
+Data$is.Weekday <- as.factor(dummy)
+
+Data
+
+xy.table <- Data[,
+                  .(number.of.steps = mean(steps, na.rm =T)) , 
+                  by = .(interval.ID = interval.ID , is.Weekday = is.Weekday)
+                ]
+
+xy.table
+ 
+xyplot(number.of.steps~interval.ID | is.Weekday, 
+       data=xy.table,
+       main="Activity Patterns on Weekdays and Weekends", 
+       xlab="Interval ID",  
+       ylab="Number of Steps Taken",
+       layout=c(1,2),
+       type=c("l","l"),
+       scales = list(
+                      #just to get rid of the interval ID cluster on the x-axis
+                      x = list(at= levels(Data$interval.ID)[seq(1,288,47)]), 
+                      # the y-axis labelling
+                      y = list(at=seq(0, 250, 50))
+                     )
+       
+       )
+```
+
+Based on this graphs, one can speculate that *this person is more active(on his/her feet) on weekends compared to weekdays (!)*. To support this claim, we can (1) find and compare the mean number of steps taken on weekdays and weekends respectively. (2) For each type of days (weekdays or weekends), we can compare the number of 5-minute intervals during which 100 or more steps are taken in average. The results from these two calculations should be enough to prove our claim.
+
+```{r,tidy=T}
+
+#(1)
+Means <- xy.table[, .(Mean = mean(number.of.steps)), by=is.Weekday ]; Means
+
+#(2)
+Above.100.steps.weekdays <- filter(xy.table, 
+                                   as.character(is.Weekday) == "weekday" & number.of.steps> 100
+                                   );
+Above.100.steps.weekends <- filter(xy.table, 
+                                   as.character(is.Weekday) == "weekend" & number.of.steps> 100
+                                   );
+Day.Type <- c("Weekday", "Weekend")
+More.than.100.steps <- c(nrow(Above.100.steps.weekdays), nrow(Above.100.steps.weekends))
+
+report <- data.frame(Day.Type, More.than.100.steps)
+report
+
+```
+
+Results for (1) and (2) serve as evidence to support the fact that this person is more active on weekends.
