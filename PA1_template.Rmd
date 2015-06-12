@@ -2,8 +2,9 @@
 title: "Reproducible Research: Peer Assessment 1"
 author: "Ahmed Tadde"
 date: "June 9, 2015"
-output: html_document
-keep_md: true
+ooutput: 
++  html_document:
++    keep_md: true
 ---
 
 
@@ -238,3 +239,9 @@ report
 ```
 
 Results for (1) and (2) serve as evidence to support the fact that this person is more active on weekends.
+
+
+
+
+
+---
